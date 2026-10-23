@@ -94,7 +94,7 @@
         <div class="result-empty d-flex flex-column align-items-center justify-content-center text-center">
           <i class="bi bi-person-badge" style="font-size:3.5rem"></i>
           <div class="fs-5 mt-2">Scan a QR code or search by name</div>
-          <div class="small mt-1">Participant details, T-shirt size and badge box will appear here</div>
+          <div class="small mt-1">Participant details and T-shirt size will appear here</div>
         </div>
       </div>
     </div>
@@ -252,8 +252,8 @@
     var row = el('div', 'row row-cols-2 row-cols-md-4 g-2 mb-3');
     row.appendChild(tile('tile-shirt' + (m.shirt_given_at ? ' given' : ''), 'T-shirt', m.shirt || '–', m.shirt_given_at ? 'Collected ' + m.shirt_given_at.slice(11, 16) : 'Not collected'));
     row.appendChild(tile('tile-food' + (m.food !== 'none' ? ' has' : ''), 'Meal', m.food !== 'none' ? m.food_label : 'Regular'));
-    var boxVal = m.box ? 'Box ' + m.box : m.open_job ? 'In print queue' : m.badge_print_count ? 'Printed' : 'Not printed';
-    row.appendChild(tile('tile-box' + (m.box || m.badge_print_count || m.open_job ? '' : ' none'), 'Badge', boxVal,
+    var boxVal = m.open_job ? 'In print queue' : m.badge_print_count ? 'Printed' : 'Not printed';
+    row.appendChild(tile('tile-box' + (m.badge_print_count || m.open_job ? '' : ' none'), 'Badge', boxVal,
                          m.badge_print_count ? m.badge_print_count + '× · last ' + (m.badge_printed_at || '').slice(11, 16) : ''));
     row.appendChild(tile(m.can_enter ? 'st-ok' : 'st-bad', 'Payment', m.payment_label));
     box.appendChild(row);
@@ -266,7 +266,7 @@
     }
     if (m.can_enter && !m.checkin_at) btn('btn-primary', 'bi-box-arrow-in-right', 'Check in', doCheckin, 'col-12');
     if (m.can_enter) {
-      btn(m.badge_print_count || m.box ? 'btn-outline-primary' : 'btn-primary', 'bi-printer', 'Print badge', printBadge);
+      btn(m.badge_print_count ? 'btn-outline-primary' : 'btn-primary', 'bi-printer', 'Print badge', printBadge);
       btn(m.shirt_given_at ? 'btn-outline-secondary' : 'btn-outline-primary', 'bi-check2-square', 'T-shirt given', giveShirt);
     }
     box.appendChild(r1);
@@ -294,7 +294,7 @@
       show(m, { cls: 'st-warn', icon: 'bi-exclamation-triangle-fill', text: 'Already checked in at ' + r.already.at.slice(11, 16) + ' on ' + r.already.device });
     } else {
       beep(true);
-      show(m, { cls: 'st-ok', icon: 'bi-check-circle-fill', text: 'Checked in' + (m.box ? ' — pick up the badge from box ' + m.box : '') });
+      show(m, { cls: 'st-ok', icon: 'bi-check-circle-fill', text: 'Checked in' });
     }
   }
   var scanning = false;
@@ -319,7 +319,7 @@
       b.disabled = false;
       if (r.need_confirm) {
         var msg = r.reason === 'queued' ? 'This badge is already in the print queue. Print another one?'
-          : (r.box ? 'Badge was pre-printed in box ' + r.box + ' ' : 'Badge already printed' + (r.at ? ' at ' + r.at.slice(11, 16) : '') + ' ') + '— print another one?';
+          : 'Badge already printed' + (r.at ? ' at ' + r.at.slice(11, 16) : '') + ' — print another one?';
         ask('Print badge again?', msg, 'Print again').then(function (yes) { if (yes) printBadge(b, true); });
         return;
       }
