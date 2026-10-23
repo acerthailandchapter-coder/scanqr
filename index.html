@@ -200,7 +200,7 @@
     renderScannerMode();
   }
   DEVICES.forEach(function (d) {
-    var b = el('button', 'btn btn-outline-primary btn-lg', d);
+    var b = el('button', 'btn btn-outline-primary btn-lg text-nowrap px-2', d);
     b.onclick = function () { setDevice(d); deviceModal.hide(); };
     document.getElementById('deviceChoices').appendChild(b);
   });
