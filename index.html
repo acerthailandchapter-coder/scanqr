@@ -135,7 +135,7 @@
     return k;
   })();
   window.addEventListener('hashchange', function () { location.reload(); });  // วางลิงก์ใหม่ในแท็บเดิม
-  var DEVICES = ["ipad-1","ipad-2","ipad-3","ipad-4","phone-1","phone-2","phone-3"];
+  var DEVICES = ["qr_scan-1","qr_scan-2","qr_scan-3","qr_scan-4","qr_scan-5","qr_scan-6","qr_scan-7"];
   var API_URL = "https://script.google.com/macros/s/AKfycbzYNFK7xrAsglsbbskYK2xVbQryvwzwyL8706JAknxHCgvv-pFcjQZ2gYsQg_vQ76RILg/exec";  // หน้าสแกนกล้องแยก (scan-page/) ใส่ URL ของ Apps Script ตรงนี้ตอน build
   var DEVICE = '';
   var current = null;
@@ -395,8 +395,8 @@
     }).catch(function (e) { list.textContent = ''; list.appendChild(el('div', 'text-danger p-2', errText(e))); });
   }
 
-  // โหมดเครื่องสแกน: เคอร์เซอร์กลับมาที่ช่องค้นหาเสมอ (ค่าเริ่มต้นเปิดบน iPad ปิดบนมือถือ)
-  function scannerMode() { var v = store('icapma_ci_scanner_mode'); return v === null ? /^ipad/.test(DEVICE) : !!v; }
+  // โหมดเครื่องสแกน: เคอร์เซอร์กลับมาที่ช่องค้นหาเสมอ (ค่าเริ่มต้นเปิดบน iPad ปิดบนมือถือ Android ที่ใช้กล้อง)
+  function scannerMode() { var v = store('icapma_ci_scanner_mode'); return v === null ? !/Android/i.test(navigator.userAgent) : !!v; }
   function renderScannerMode() {
     var b = document.getElementById('scannerMode'); b.textContent = '';
     b.appendChild(icon(scannerMode() ? 'bi-upc-scan' : 'bi-camera'));
