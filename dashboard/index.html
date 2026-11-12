@@ -357,7 +357,7 @@ function kpi(iconName, cls, value, label) {
   return col;
 }
 
-function loadOverview() {
+function loadOverview(silent) {
   return call('dashOverview').then(function (o) {
     var mode = document.getElementById('mode');
     var alertBox = document.getElementById('modeAlert');
@@ -390,6 +390,7 @@ function loadOverview() {
     k.appendChild(kpi('bi-send', 'bg-soft-info', o.sentToday + ' / ' + o.dailyCap, 'ส่งวันนี้ (เพดาน)'));
     k.lastChild.className = 'col-12 col-md';
   }).catch(function (e) {
+    if (silent) return; // รีเฟรชเบื้องหลังพลาด (เน็ตสะดุด) → คงค่าเดิมไว้ รอบหน้าลองใหม่
     var mode = document.getElementById('mode');
     mode.className = 'mode-pill mode-dry'; mode.textContent = errText(e);
   });
@@ -439,17 +440,24 @@ function renderFilters(counts) {
   });
 }
 
-function loadList(append) {
+// silent = รีเฟรชเองเบื้องหลัง: ไม่มี spinner ไม่จางจอ โหลดจำนวนแถวเท่าที่มีบนจอ พลาดก็เงียบไว้ รอบหน้าลองใหม่
+function loadList(append, silent) {
   var seq = ++listState.seq;
+  listState.loading = true;
   var box = document.getElementById('results');
   var spin = document.getElementById('searching');
   var more = document.getElementById('more');
   var moreBtn = document.getElementById('moreBtn');
   var offset = append ? listState.offset : 0;
-  if (append) { moreBtn.disabled = true; } else { spin.classList.remove('d-none'); box.style.opacity = '.5'; }
+  if (append) { moreBtn.disabled = true; } else if (!silent) { spin.classList.remove('d-none'); box.style.opacity = '.5'; }
+  var req = { query: listState.query, filter: listState.filter, offset: offset };
+  if (silent) req.limit = Math.max(listState.offset, 30);
 
-  call('dashList', { query: listState.query, filter: listState.filter, offset: offset }).then(function (r) {
+  call('dashList', req).then(function (r) {
     if (seq !== listState.seq) return; // มีคำขอใหม่กว่าแล้ว
+    listState.loading = false;
+    if (silent && !canAutoRefresh()) return; // ระหว่างรอ ผู้ใช้เริ่มกดอะไรบางอย่าง → ไม่เปลี่ยนจอใต้มือ
+    lastRefresh = Date.now();
     spin.classList.add('d-none');
     box.style.opacity = '';
     moreBtn.disabled = false;
@@ -462,6 +470,7 @@ function loadList(append) {
     var info = document.getElementById('listInfo');
     info.textContent = r.total
       ? 'แสดง ' + listState.offset + ' จาก ' + r.total + ' คน' + (listState.query ? ' ที่ตรงกับ "' + listState.query + '"' : '') + (listState.filter !== 'all' ? ' · ' + label : '')
+        + ' · อัปเดตอัตโนมัติ ' + new Date().toTimeString().slice(0, 8)
       : '';
     if (!r.total) {
       var e = el('div', 'text-center py-5 empty');
@@ -475,12 +484,38 @@ function loadList(append) {
     more.classList.toggle('d-none', listState.offset >= r.total);
   }).catch(function (e) {
     if (seq !== listState.seq) return;
+    listState.loading = false;
     spin.classList.add('d-none');
     box.style.opacity = '';
     moreBtn.disabled = false;
-    toast('bad', errText(e));
+    if (!silent) toast('bad', errText(e));
   });
 }
+
+// ---------- รีเฟรชเอง: อีกเครื่องกดยืนยัน/ส่ง QR แล้ว จอนี้เห็นภายใน ~20 วินาที
+// ไม่รีเฟรชตอนที่ผู้ใช้กำลังทำอะไรอยู่ (หน้าต่างยืนยัน/QR เปิด, กำลังส่ง, กำลังแก้อีเมล, กำลังพิมพ์ค้นหา)
+var AUTO_REFRESH_MS = 20000;
+var lastRefresh = Date.now();
+function canAutoRefresh() {
+  if (document.visibilityState === 'hidden') return false;
+  if (document.querySelector('.modal.show')) return false;
+  var res = document.getElementById('results');
+  if (res.querySelector('button:disabled') || res.querySelector('.collapse.show, .collapsing')) return false;
+  if (res.contains(document.activeElement) && /INPUT|TEXTAREA/.test(document.activeElement.tagName)) return false;
+  var qv = document.getElementById('q').value.trim();
+  if ((qv.length >= 2 ? qv : '') !== listState.query) return false; // ยังพิมพ์ค้นหาไม่เสร็จ
+  return true;
+}
+function autoRefresh() {
+  if (listState.loading || !canAutoRefresh()) return;
+  loadOverview(true);
+  loadList(false, true);
+}
+setInterval(autoRefresh, AUTO_REFRESH_MS);
+// กลับมาที่แท็บ/แอปนี้ (สลับหน้าจอ เปิด iPad จากพักหน้าจอ) → รีเฟรชทันทีถ้าไม่ได้รีเฟรชมาเกิน 5 วินาที
+document.addEventListener('visibilitychange', function () {
+  if (document.visibilityState === 'visible' && Date.now() - lastRefresh > 5000) autoRefresh();
+});
 
 function renderMember(m) {
   var card = el('div', 'card member mb-2');
