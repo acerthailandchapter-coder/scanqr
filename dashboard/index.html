@@ -155,7 +155,10 @@
     </div>
   </div>
 
-  <div class="d-flex flex-wrap gap-2 mb-2" id="filters"></div>
+  <div class="d-flex flex-wrap align-items-start gap-2 mb-2">
+    <div class="d-flex flex-wrap gap-2 me-auto" id="filters"></div>
+    <button type="button" class="btn btn-sm btn-success" id="walkinBtn"><i class="bi bi-person-plus me-1"></i>เพิ่มคน walk-in</button>
+  </div>
   <div class="small text-secondary mb-2" id="listInfo"></div>
   <div id="results">
     <div class="text-center py-5 empty"><span class="spinner-border text-secondary mb-2"></span><br>กำลังโหลดรายชื่อ…</div>
@@ -179,6 +182,55 @@
       <div class="modal-footer border-0 pt-0">
         <button type="button" class="btn btn-light" data-bs-dismiss="modal">ยกเลิก</button>
         <button type="button" class="btn btn-primary" id="confirmOk"></button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- เพิ่มคน walk-in (สมัครหน้างาน) -->
+<div class="modal fade" id="walkinModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content border-0 shadow">
+      <div class="modal-header border-0 pb-0">
+        <h5 class="modal-title d-flex align-items-center gap-2"><i class="bi bi-person-plus text-success"></i>เพิ่มคน walk-in</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="ปิด"></button>
+      </div>
+      <div class="modal-body">
+        <p class="small text-secondary mb-3">เพิ่มเป็นแถวใหม่ในชีต รหัส W-001, W-002 … สถานะ <b>รอชำระ</b> —
+          รับเงินแล้วกด <b>ยืนยันชำระแล้ว + ส่ง QR + พิมพ์ QR</b> ที่การ์ดของคนนี้</p>
+        <div class="mb-2">
+          <label class="form-label small mb-1" for="wName">ชื่อ-นามสกุล <span class="text-danger">*</span></label>
+          <input class="form-control" id="wName" maxlength="120" placeholder="เช่น Dr. Somchai Jaidee" autocomplete="off">
+        </div>
+        <div class="row g-2 mb-2">
+          <div class="col-sm-7">
+            <label class="form-label small mb-1" for="wEmail">Email</label>
+            <input class="form-control" id="wEmail" type="email" maxlength="120" placeholder="ไม่มีก็เว้นว่าง (พิมพ์ QR แทน)" autocomplete="off">
+          </div>
+          <div class="col-sm-5">
+            <label class="form-label small mb-1" for="wMobile">Mobile</label>
+            <input class="form-control" id="wMobile" type="tel" maxlength="30" autocomplete="off">
+          </div>
+        </div>
+        <div class="mb-2">
+          <label class="form-label small mb-1" for="wReg">Register Type</label>
+          <select class="form-select" id="wReg"><option value="">กำลังโหลด…</option></select>
+        </div>
+        <div class="row g-2">
+          <div class="col-6">
+            <label class="form-label small mb-1" for="wShirt">Size เสื้อ</label>
+            <select class="form-select" id="wShirt"><option value="">— ไม่ระบุ —</option></select>
+          </div>
+          <div class="col-6">
+            <label class="form-label small mb-1" for="wFood">อาหาร</label>
+            <select class="form-select" id="wFood"></select>
+          </div>
+        </div>
+        <div class="alert alert-warning small mt-3 mb-0 d-none" id="wDup"></div>
+      </div>
+      <div class="modal-footer border-0 pt-0">
+        <button type="button" class="btn btn-light" data-bs-dismiss="modal">ยกเลิก</button>
+        <button type="button" class="btn btn-success" id="wSave"><i class="bi bi-person-plus me-1"></i>เพิ่ม</button>
       </div>
     </div>
   </div>
@@ -716,6 +768,80 @@ function showQr(m, btn, autoPrint) {
   });
 }
 document.getElementById('qrPrint').addEventListener('click', function () { window.print(); });
+
+// ---------- เพิ่มคน walk-in (สมัครหน้างาน) — ไม่คำนวณค่าลงทะเบียน (งานฝ่ายการเงิน)
+var walkinModal = new bootstrap.Modal(document.getElementById('walkinModal'));
+var FOOD_TH = { 'None': 'ไม่มีข้อจำกัด', 'Muslim': 'มุสลิม (Halal)', 'Vegetarian': 'มังสวิรัติ', 'Muslim Vegetarian': 'มุสลิม + มังสวิรัติ' };
+var walkinOpts = null, walkinDupOk = false;
+function fillSelect(sel, values, labels, first) {
+  sel.textContent = '';
+  if (first) { var o0 = el('option', null, first); o0.value = ''; sel.appendChild(o0); }
+  values.forEach(function (v) { var o = el('option', null, labels ? labels[v] || v : v); o.value = v; sel.appendChild(o); });
+}
+function resetWalkin() {
+  ['wName', 'wEmail', 'wMobile'].forEach(function (id) { var i = document.getElementById(id); i.value = ''; i.classList.remove('is-invalid'); });
+  ['wReg', 'wShirt', 'wFood'].forEach(function (id) { document.getElementById(id).selectedIndex = 0; });
+  document.getElementById('wDup').classList.add('d-none');
+  walkinDupOk = false;
+  document.getElementById('wSave').lastChild.textContent = 'เพิ่ม';
+}
+document.getElementById('walkinBtn').addEventListener('click', function () {
+  if (!staffInput.value.trim()) { staffInput.classList.add('is-invalid'); staffInput.focus(); toast('warn', 'กรอกชื่อผู้กดด้านบนก่อน'); return; }
+  resetWalkin();
+  walkinModal.show();
+  if (walkinOpts) return;
+  call('dashWalkinOptions').then(function (o) {
+    walkinOpts = o;
+    fillSelect(document.getElementById('wReg'), o.registerTypes, null, '— เลือก Register Type —');
+    fillSelect(document.getElementById('wShirt'), o.shirts, null, '— ไม่ระบุ —');
+    fillSelect(document.getElementById('wFood'), o.foods, FOOD_TH, null);
+  }).catch(function (e) { toast('bad', errText(e)); });
+});
+document.getElementById('walkinModal').addEventListener('shown.bs.modal', function () { document.getElementById('wName').focus(); });
+['wName', 'wEmail'].forEach(function (id) {
+  document.getElementById(id).addEventListener('input', function () { // แก้ชื่อ/อีเมล → ตรวจคนซ้ำใหม่
+    walkinDupOk = false;
+    document.getElementById('wDup').classList.add('d-none');
+    document.getElementById('wSave').lastChild.textContent = 'เพิ่ม';
+  });
+});
+document.getElementById('wSave').addEventListener('click', function () {
+  var btn = this, nameI = document.getElementById('wName'), emailI = document.getElementById('wEmail');
+  var data = {
+    staff: staffInput.value.trim(), name: nameI.value.trim(), email: emailI.value.trim(),
+    mobile: document.getElementById('wMobile').value.trim(), registerType: document.getElementById('wReg').value,
+    shirt: document.getElementById('wShirt').value, food: document.getElementById('wFood').value || 'None',
+    confirmDuplicate: walkinDupOk
+  };
+  nameI.classList.toggle('is-invalid', data.name.length < 3);
+  emailI.classList.toggle('is-invalid', !!data.email && !/^[^\s@,;<>]+@[^\s@,;<>]+\.[a-z]{2,}$/i.test(data.email));
+  if (data.name.length < 3) { nameI.focus(); return; }
+  if (emailI.classList.contains('is-invalid')) { emailI.focus(); return; }
+  btn.disabled = true;
+  call('dashAddWalkin', data).then(function (r) {
+    btn.disabled = false;
+    if (r.needConfirm) {
+      var box = document.getElementById('wDup');
+      box.textContent = '';
+      box.appendChild(el('div', 'fw-semibold mb-1', 'มีชื่อหรืออีเมลนี้ในระบบแล้ว — คนเดียวกันหรือเปล่า?'));
+      r.duplicates.forEach(function (d) { box.appendChild(el('div', null, '• ' + d.code + ' · ' + d.name + (d.email ? ' · ' + d.email : '') + ' · ' + (PAY[d.payment] || PAY.unknown).label)); });
+      box.appendChild(el('div', 'mt-1', 'ถ้าเป็นคนเดียวกัน กดยกเลิก แล้วค้นชื่อในรายชื่อแทน · ถ้าเป็นคนละคน กด "เพิ่มเป็นคนใหม่"'));
+      box.classList.remove('d-none');
+      walkinDupOk = true;
+      btn.lastChild.textContent = 'เพิ่มเป็นคนใหม่';
+      return;
+    }
+    walkinModal.hide();
+    toast('ok', 'เพิ่ม ' + r.member.code + ' · ' + r.member.name + ' แล้ว — รับเงินแล้วกด "ยืนยันชำระแล้ว + ส่ง QR + พิมพ์ QR"');
+    // แสดงการ์ดของคนนี้ทันที
+    var q = document.getElementById('q');
+    q.value = r.member.code;
+    listState.query = r.member.code;
+    listState.filter = 'all';
+    loadOverview();
+    loadList(false);
+  }).catch(function (e) { btn.disabled = false; toast('bad', errText(e)); });
+});
 
 renderFilters(null);
 loadOverview();
