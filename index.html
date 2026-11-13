@@ -46,6 +46,13 @@
   .act .btn { min-height: 60px; font-size: 1.15rem; font-weight: 600; }
   .sr-item { cursor: pointer; } .sr-item:active { background: #eef3f8; }
   .busy { opacity: .55; pointer-events: none; }
+  /* แจ้งผลสแกนให้เห็นชัด (13 พ.ย.): จอวาบสีเต็มจอ + ไอคอนใหญ่ ~0.9 วิ — ไม่บังการกด */
+  .scan-flash { position: fixed; inset: 0; z-index: 2000; pointer-events: none; display: flex; align-items: center; justify-content: center;
+                opacity: 0; transition: opacity .15s; }
+  .scan-flash.on { opacity: 1; }
+  .scan-flash i { font-size: 9rem; color: #fff; filter: drop-shadow(0 4px 16px rgba(0,0,0,.25)); }
+  .scan-flash.ok { background: rgba(21,127,60,.55); } .scan-flash.warn { background: rgba(217,119,6,.55); } .scan-flash.bad { background: rgba(180,35,24,.55); }
+  .reading { font-size: 1.25rem; }
 </style>
 </head>
 <body>
@@ -179,14 +186,44 @@
     t.addEventListener('hidden.bs.toast', function () { t.remove(); });
     bt.show();
   }
-  function beep(ok) {
+  // เสียง: ใช้ AudioContext ตัวเดียว ปลดล็อกตอนแตะจอครั้งแรก (Safari/Chrome มือถือไม่ให้เล่นเสียงก่อนผู้ใช้แตะ)
+  var actx = null;
+  function audio() {
+    try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); if (actx.state === 'suspended') actx.resume(); } catch (e) {}
+    return actx;
+  }
+  ['touchstart', 'pointerdown', 'keydown'].forEach(function (ev) { document.addEventListener(ev, audio, { once: true, passive: true }); });
+  function tone(freqs, dur) {
+    var ctx = audio(); if (!ctx) return;
     try {
-      var ctx = new (window.AudioContext || window.webkitAudioContext)();
-      var o = ctx.createOscillator(), g = ctx.createGain();
-      o.frequency.value = ok ? 880 : 220; g.gain.value = 0.15;
-      o.connect(g); g.connect(ctx.destination); o.start(); o.stop(ctx.currentTime + (ok ? 0.12 : 0.35));
+      freqs.forEach(function (f, i) {
+        var o = ctx.createOscillator(), g = ctx.createGain(), t = ctx.currentTime + i * dur;
+        o.frequency.value = f; g.gain.value = 0.2; o.connect(g); g.connect(ctx.destination); o.start(t); o.stop(t + dur * 0.9);
+      });
     } catch (e) {}
-    if (navigator.vibrate) navigator.vibrate(ok ? 60 : [80, 60, 80]);
+  }
+  function vibrate(p) { try { if (navigator.vibrate) navigator.vibrate(p); } catch (e) {} }  // iPad/iPhone ไม่มีสั่น — มีเสียง+จอวาบแทน
+  // kind: 'ok' สำเร็จ · 'warn' เช็คอินแล้ว/ต้องตรวจ · 'bad' ผิดพลาด
+  function feedback(kind) {
+    if (kind === 'ok') { tone([880, 1320], 0.12); vibrate(250); }
+    else if (kind === 'warn') { tone([660, 660], 0.15); vibrate([180, 100, 180]); }
+    else { tone([220], 0.45); vibrate([350, 120, 350]); }
+    flash(kind);
+  }
+  function beep(ok) { feedback(ok ? 'ok' : 'bad'); }
+  var flashTimer = null;
+  function flash(kind) {
+    var f = document.getElementById('scanFlash');
+    if (!f) { f = el('div', 'scan-flash'); f.id = 'scanFlash'; f.setAttribute('aria-hidden', 'true'); document.body.appendChild(f); }
+    f.className = 'scan-flash ' + kind; f.textContent = '';
+    f.appendChild(icon(kind === 'ok' ? 'bi-check-circle-fill' : kind === 'warn' ? 'bi-exclamation-triangle-fill' : 'bi-x-octagon-fill'));
+    void f.offsetWidth; f.classList.add('on');
+    clearTimeout(flashTimer); flashTimer = setTimeout(function () { f.classList.remove('on'); }, 900);
+  }
+  // เลื่อนลงไปที่ผลสแกน ถ้าผลอยู่นอกจอ (มือถือ / iPad แนวตั้ง) — จอกว้างที่ผลอยู่ข้าง ๆ อยู่แล้วไม่เลื่อน
+  function revealResult() {
+    var box = document.getElementById('result'), r = box.getBoundingClientRect();
+    if (r.top < 0 || r.top > window.innerHeight * 0.45) box.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
   // สำรองในเครื่อง (CLAUDE.md §8) — ดูย้อนหลังได้แม้เน็ตหลุด
   function logLocal(entry) {
@@ -278,13 +315,14 @@
     next.appendChild(icon('bi-arrow-up-circle me-2')); next.appendChild(document.createTextNode('Scan next person'));
     next.onclick = function () { window.scrollTo({ top: 0, behavior: 'smooth' }); };
     box.appendChild(next);
-    if (window.innerWidth < 992) box.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    revealResult();
   }
   function showError(text) {
     current = null;
     var box = document.getElementById('result'); box.textContent = '';
     var b = el('div', 'status-banner st-bad'); b.appendChild(icon('bi-x-octagon-fill')); b.appendChild(el('span', null, text));
     box.appendChild(b);
+    revealResult();
   }
 
   // ---------- การกระทำ
@@ -292,12 +330,12 @@
     if (!r.ok) { beep(false); showError(r.error); return; }
     var m = r.member;
     logLocal({ action: 'scan', id: m.id, code: m.code });
-    if (r.warning) { beep(false); show(m, { cls: 'st-bad', icon: 'bi-exclamation-octagon-fill', text: r.warning }); return; }
+    if (r.warning) { feedback('bad'); show(m, { cls: 'st-bad', icon: 'bi-exclamation-octagon-fill', text: r.warning }); return; }
     if (r.already) {
-      beep(false);
+      feedback('warn');
       show(m, { cls: 'st-warn', icon: 'bi-exclamation-triangle-fill', text: 'Already checked in at ' + r.already.at.slice(11, 16) + ' on ' + r.already.device });
     } else {
-      beep(true);
+      feedback('ok');
       show(m, { cls: 'st-ok', icon: 'bi-check-circle-fill', text: 'Checked in' });
     }
   }
@@ -305,6 +343,12 @@
   function submitScan(text) {
     if (scanning) return;
     scanning = true; busy(true);
+    // อ่าน QR ได้แล้ว → บอกทันที (Google ตอบ ~2 วิ) ไม่ให้เจ้าหน้าที่สงสัยว่าสแกนติดไหม
+    vibrate(60); tone([1200], 0.05);
+    var box = document.getElementById('result'); box.textContent = '';
+    var rd = el('div', 'status-banner st-warn reading');
+    rd.appendChild(el('span', 'spinner-border spinner-border-sm me-2')); rd.appendChild(el('span', null, 'QR read — checking…'));
+    box.appendChild(rd); revealResult();
     call('ciScan', text, DEVICE).then(function (r) { scanning = false; busy(false); onScanResult(r); },
       function (e) {
         scanning = false; busy(false);
