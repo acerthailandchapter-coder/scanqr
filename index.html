@@ -28,6 +28,7 @@
   .toast-container { z-index: 1090; }
   .cam-wrap { position: relative; background: #0d1520; border-radius: 1rem; overflow: hidden; aspect-ratio: 4 / 3; }
   .cam-wrap video { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .cam-wrap video.mirror { transform: scaleX(-1); } /* กล้องหน้า: แสดงแบบกระจก ให้ขยับ QR เข้ากรอบง่าย (การอ่าน QR ไม่กระทบ) */
   .cam-frame { position: absolute; inset: 18%; border: 3px solid rgba(255,255,255,.85); border-radius: 1rem; pointer-events: none; }
   .cam-off { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #cfd8e3; gap: .75rem; text-align: center; padding: 1rem; }
   .result-empty { color: #98a2b3; min-height: 380px; }
@@ -82,9 +83,12 @@
             <div class="small" id="camErr"></div>
           </div>
         </div>
-        <div class="d-flex justify-content-between align-items-center mt-2 small text-secondary">
+        <div class="d-flex flex-wrap gap-2 justify-content-between align-items-center mt-2 small text-secondary">
           <span>Hold the QR inside the frame, ~20 cm from the camera</span>
-          <button class="btn btn-sm btn-outline-secondary d-none" id="camStop"><i class="bi bi-stop-circle me-1"></i>Stop camera</button>
+          <span class="d-flex gap-2 flex-shrink-0">
+            <button class="btn btn-sm btn-outline-secondary d-none" id="camFlip" title="Switch front / back camera"><i class="bi bi-arrow-repeat me-1"></i><span id="camFlipLabel">Front camera</span></button>
+            <button class="btn btn-sm btn-outline-secondary d-none" id="camStop"><i class="bi bi-stop-circle me-1"></i>Stop camera</button>
+          </span>
         </div>
       </div>
     </div>
@@ -416,23 +420,51 @@
   var video = document.getElementById('video'), canvas = document.createElement('canvas');
   var ctx = canvas.getContext('2d', { willReadFrequently: true });
   var stream = null, lastText = '', lastAt = 0, busyUntil = 0, lastTick = 0;
-  document.getElementById('camStart').onclick = function () {
+  // กล้องหลัง (environment) เป็นค่าเริ่มต้น · ปุ่มสลับเป็นกล้องหน้า (user) — จำค่าที่เลือกไว้ในเครื่อง
+  var facing = store('icapma_ci_facing') === 'user' ? 'user' : 'environment';
+  function stopTracks() {
+    if (stream) stream.getTracks().forEach(function (t) { t.stop(); });
+    stream = null;
+  }
+  function startCamera() {
     var err = document.getElementById('camErr');
+    err.textContent = '';
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { err.textContent = 'Camera is not available on this link — search by name, or connect a Bluetooth scanner'; return; }
-    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 1280 } }, audio: false }).then(function (s) {
+    stopTracks(); // บางเครื่องเปิดกล้องได้ทีละตัว ต้องปิดตัวเดิมก่อน
+    var flip = document.getElementById('camFlip');
+    flip.disabled = true;
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: facing }, width: { ideal: 1280 } }, audio: false }).then(function (s) {
       stream = s; video.srcObject = s; video.play();
+      // ใช้กล้องที่ได้จริง (เครื่องที่มีกล้องตัวเดียวจะได้ตัวเดิม)
+      var got = (s.getVideoTracks()[0].getSettings() || {}).facingMode;
+      video.classList.toggle('mirror', (got || facing) === 'user');
+      document.getElementById('camFlipLabel').textContent = facing === 'user' ? 'Back camera' : 'Front camera';
       document.getElementById('camOff').classList.add('d-none');
       document.getElementById('camFrame').classList.remove('d-none');
       document.getElementById('camStop').classList.remove('d-none');
+      flip.classList.remove('d-none');
+      flip.disabled = false;
+      lastText = '';
       requestAnimationFrame(tick);
-    }, function (e) { err.textContent = 'Cannot start camera (' + e.name + ') — search by name, or connect a Bluetooth scanner'; });
+    }, function (e) {
+      flip.disabled = false;
+      document.getElementById('camOff').classList.remove('d-none');
+      err.textContent = 'Cannot start camera (' + e.name + ') — search by name, or connect a Bluetooth scanner';
+    });
+  }
+  document.getElementById('camStart').onclick = startCamera;
+  document.getElementById('camFlip').onclick = function () {
+    facing = facing === 'user' ? 'environment' : 'user';
+    store('icapma_ci_facing', facing);
+    startCamera();
   };
   document.getElementById('camStop').onclick = function () {
-    if (stream) stream.getTracks().forEach(function (t) { t.stop(); });
-    stream = null;
+    stopTracks();
+    video.classList.remove('mirror');
     document.getElementById('camOff').classList.remove('d-none');
     document.getElementById('camFrame').classList.add('d-none');
     document.getElementById('camStop').classList.add('d-none');
+    document.getElementById('camFlip').classList.add('d-none');
   };
   function tick(ts) {
     if (!stream) return;
