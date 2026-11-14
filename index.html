@@ -275,7 +275,10 @@
   // ---------- สถานะ (ทุก 20 วิ)
   function refreshStats() {
     call('ciStatus').then(function (s) {
-      document.getElementById('stats').textContent = 'Checked in ' + s.checked_in + '/' + s.eligible;
+      // ตัวหาร = ชำระแล้ว/ยกเว้น (เช็คอินได้) · registered = ทุกแถวในชีต รวมคนที่ยังไม่ชำระ
+      var st = document.getElementById('stats');
+      st.textContent = 'Checked in ' + s.checked_in + '/' + s.eligible + ' paid' + (s.registered ? ' · ' + s.registered + ' registered' : '');
+      st.title = s.eligible + ' paid or exempt (can check in) out of ' + s.registered + ' registered';
       var a = document.getElementById('agent'); a.textContent = '';
       a.className = 'pill ' + (s.agent_ok ? 'pill-light' : 'pill-bad');
       a.appendChild(icon('bi-printer'));
