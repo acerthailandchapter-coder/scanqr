@@ -53,7 +53,7 @@
   .st-ok { background: #E6F4EC; color: #17703F; } .st-warn { background: #FDF1DC; color: #8A5300; } .st-bad { background: #FCE9EA; color: #B3222A; }
   /* ชื่อในกรอบแบบช่องขาวบนป้าย — ฟอนต์เดียวกับที่พิมพ์ (Times New Roman Bold) ให้เห็นว่าป้ายจะออกมาแบบไหน */
   .badge-slot { border: 2.5px solid var(--ink); border-radius: 1.1rem; padding: 1rem 1.25rem; text-align: center; margin-bottom: .75rem; background: #fff; }
-  .m-name { font-family: "Times New Roman", Times, serif; font-size: 2.3rem; font-weight: 700; line-height: 1.12; overflow-wrap: anywhere; color: #000; }
+  .m-name { font-family: "Times New Roman", Times, serif; font-size: clamp(1.45rem, 6.5vw, 2.3rem); font-weight: 700; line-height: 1.12; overflow-wrap: break-word; color: #000; }
   .m-reg { font-family: "Times New Roman", Times, serif; font-size: 1.2rem; color: #000; margin-top: .3rem; }
   .m-meta { color: var(--muted); font-size: 1.05rem; display: flex; flex-wrap: wrap; justify-content: center; gap: .25rem 1.1rem; }
   .tile { border-radius: .75rem; padding: .9rem; text-align: center; height: 100%; }
@@ -73,9 +73,11 @@
   .scan-flash i { font-size: 9rem; color: #fff; filter: drop-shadow(0 4px 16px rgba(0,0,0,.25)); }
   .scan-flash.ok { background: rgba(30,138,82,.58); } .scan-flash.warn { background: rgba(199,119,0,.58); } .scan-flash.bad { background: rgba(213,43,50,.58); }
   .reading { font-size: 1.25rem; }
+  .act .btn.sending { opacity: 1; background: var(--shallows); border-color: var(--sea); color: var(--ink); }
+  .act .btn.sent { opacity: 1; background: var(--palm); border-color: var(--palm); color: #fff; }
   @media (prefers-reduced-motion: reduce) { .scan-flash { transition: none; } }
   @media (max-width: 575.98px) {
-    .m-name { font-size: 1.85rem; } .m-reg { font-size: 1.05rem; } .badge-slot { padding: .8rem .9rem; }
+    .m-reg { font-size: 1.05rem; } .badge-slot { padding: .8rem .9rem; }
     .tile:not(.tile-shirt) .val { font-size: 1.25rem; overflow-wrap: break-word; }
   }
 </style>
@@ -401,27 +403,58 @@
         beep(false); showError('Cannot reach Google (' + errText(e) + ') — use the paper list, and scan again when the connection is back');
       });
   }
+  // กดพิมพ์แล้ว Google ตอบ ~3–7 วิ → บอกทันทีว่ากำลังส่ง ห้ามกดซ้ำ (ปุ่มล็อก + แถบเตือนบนผลลัพธ์)
+  function sending(b, text) {
+    var html = b.innerHTML, cls = b.className;
+    b.disabled = true; b.classList.add('sending');
+    b.textContent = '';
+    b.appendChild(el('span', 'spinner-border spinner-border-sm me-2')); b.appendChild(document.createTextNode('Sending…'));
+    // แถบเตือนอยู่เหนือปุ่มที่เพิ่งกด (ตรงที่สายตาอยู่) ไม่ใช่บนสุดของหน้า
+    var row = b.closest('.act') || document.getElementById('result');
+    var bar = el('div', 'status-banner st-warn reading mb-2');
+    bar.appendChild(el('span', 'spinner-border spinner-border-sm me-2'));
+    bar.appendChild(el('span', null, text + ' — please wait, do not press again'));
+    row.parentNode.insertBefore(bar, row);
+    vibrate(30);
+    return function (sent) {
+      if (bar.parentNode) bar.parentNode.removeChild(bar);
+      if (!b.isConnected) return;
+      b.classList.remove('sending');
+      if (!sent) { b.innerHTML = html; b.className = cls; b.disabled = false; return; }
+      // ส่งแล้ว: ปุ่มเขียวสักครู่ แล้วกลับเป็นปุ่มพิมพ์ซ้ำ (กดอีกต้องยืนยัน)
+      b.textContent = ''; b.classList.add('sent');
+      b.appendChild(icon('bi-check-lg me-2')); b.appendChild(document.createTextNode('Sent'));
+      setTimeout(function () {
+        if (!b.isConnected) return;
+        b.innerHTML = html; b.className = cls.replace('btn-primary', 'btn-outline-primary'); b.disabled = false;
+      }, 4000);
+    };
+  }
   function doCheckin(b) {
-    b.disabled = true;
+    var done = sending(b, 'Checking in and sending the badge to the printer');
     call('ciCheckin', current.id, DEVICE, true).then(function (r) {
+      done(false);
       logLocal({ action: 'checkin', id: current.id });
       onScanResult(r);
       if (r.ok && r.print) printToast(r.print);
     },
-      function (e) { b.disabled = false; toast('bad', errText(e)); });
+      function (e) { done(false); toast('bad', errText(e)); });
   }
   function printBadge(b, confirmed) {
-    b.disabled = true;
+    var done = sending(b, 'Sending the badge to the printer');
     call('ciPrint', current.id, DEVICE, !!confirmed).then(function (r) {
-      b.disabled = false;
       if (r.need_confirm) {
+        done(false);
         var msg = r.reason === 'queued' ? 'This badge is already in the print queue. Print another one?'
           : 'Badge already printed' + (r.at ? ' at ' + r.at.slice(11, 16) : '') + ' — print another one?';
         ask('Print badge again?', msg, 'Print again').then(function (yes) { if (yes) printBadge(b, true); });
         return;
       }
+      done(!!r.ok);
       printToast(r);
-    }, function (e) { b.disabled = false; toast('bad', errText(e)); });
+      var tv = document.querySelector('#result .tile-box .val');
+      if (r.ok && tv) tv.textContent = 'In print queue';
+    }, function (e) { done(false); toast('bad', errText(e)); });
   }
   function printToast(r) {
     if (!r.ok) { toast('warn', r.reason === 'queued' ? 'Badge is already in the print queue' : 'Badge was printed before — press Print badge to print again'); return; }
