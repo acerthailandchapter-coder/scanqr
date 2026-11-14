@@ -335,9 +335,10 @@
       b.appendChild(icon(ic + ' me-2')); b.appendChild(document.createTextNode(text));
       b.onclick = function () { fn(b); }; c.appendChild(b); r1.appendChild(c); return b;
     }
-    if (m.can_enter && !m.checkin_at) btn('btn-primary', 'bi-box-arrow-in-right', 'Check in', doCheckin, 'col-12');
+    // ค้นด้วยชื่อ (ยังไม่เช็คอิน): ปุ่มเดียวทั้งเช็คอินและส่งพิมพ์ป้าย · สแกน QR เช็คอินให้เองแล้ว เหลือปุ่ม Print badge
+    if (m.can_enter && !m.checkin_at) btn('btn-primary btn-lg', 'bi-printer', 'Check in & print badge', doCheckin, 'col-12');
     if (m.can_enter) {
-      btn(m.badge_print_count ? 'btn-outline-primary' : 'btn-primary', 'bi-printer', 'Print badge', printBadge);
+      if (m.checkin_at) btn(m.badge_print_count || m.open_job ? 'btn-outline-primary' : 'btn-primary', 'bi-printer', 'Print badge', printBadge);
       btn(m.shirt_given_at ? 'btn-outline-secondary' : 'btn-outline-primary', 'bi-check2-square', 'T-shirt given', giveShirt);
     }
     box.appendChild(r1);
@@ -388,7 +389,11 @@
   }
   function doCheckin(b) {
     b.disabled = true;
-    call('ciCheckin', current.id, DEVICE).then(function (r) { logLocal({ action: 'checkin', id: current.id }); onScanResult(r); },
+    call('ciCheckin', current.id, DEVICE, true).then(function (r) {
+      logLocal({ action: 'checkin', id: current.id });
+      onScanResult(r);
+      if (r.ok && r.print) printToast(r.print);
+    },
       function (e) { b.disabled = false; toast('bad', errText(e)); });
   }
   function printBadge(b, confirmed) {
@@ -401,10 +406,14 @@
         ask('Print badge again?', msg, 'Print again').then(function (yes) { if (yes) printBadge(b, true); });
         return;
       }
-      logLocal({ action: 'print', id: current.id });
-      toast(r.agent_ok ? 'ok' : 'warn', r.agent_ok ? 'Sent to print — the badge will come out in a few seconds' : 'Queued, but the print station is offline — tell the Mac operator');
-      current.open_job = true;
+      printToast(r);
     }, function (e) { b.disabled = false; toast('bad', errText(e)); });
+  }
+  function printToast(r) {
+    if (!r.ok) { toast('warn', r.reason === 'queued' ? 'Badge is already in the print queue' : 'Badge was printed before — press Print badge to print again'); return; }
+    logLocal({ action: 'print', id: current && current.id });
+    toast(r.agent_ok ? 'ok' : 'warn', r.agent_ok ? 'Sent to print — the badge will come out in a few seconds' : 'Queued, but the print station is offline — tell the Mac operator');
+    if (current) current.open_job = true;
   }
   function giveShirt(b, confirmed) {
     b.disabled = true;
@@ -465,7 +474,7 @@
         a.onclick = function () {
           qInput.value = ''; list.textContent = '';
           show(m, m.checkin_at ? { cls: 'st-warn', icon: 'bi-exclamation-triangle-fill', text: 'Already checked in at ' + m.checkin_at.slice(11, 16) + ' on ' + m.checkin_device }
-                 : m.can_enter ? { cls: 'st-warn', icon: 'bi-person-check', text: 'Check the name against an ID card, then press Check in' }
+                 : m.can_enter ? { cls: 'st-warn', icon: 'bi-person-check', text: 'Check the name against an ID card, then press Check in & print badge' }
                  : { cls: 'st-bad', icon: 'bi-exclamation-octagon-fill', text: 'Not paid yet — please go to the finance desk first' });
         };
         list.appendChild(a);
