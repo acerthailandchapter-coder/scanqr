@@ -348,6 +348,14 @@
     box.appendChild(next);
     revealResult();
   }
+  var EMPTY_RESULT = document.getElementById('result').innerHTML;
+  function clearResult() {
+    current = null;
+    document.getElementById('result').innerHTML = EMPTY_RESULT;
+    qInput.value = ''; document.getElementById('searchResults').textContent = '';
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    refocus();
+  }
   function showError(text) {
     current = null;
     var box = document.getElementById('result'); box.textContent = '';
@@ -425,7 +433,10 @@
         return;
       }
       logLocal({ action: 'shirt', id: current.id });
-      show(r.member, { cls: 'st-ok', icon: 'bi-check2-square', text: 'T-shirt ' + (r.member.shirt || '') + ' recorded as collected' });
+      // รับเสื้อ = ขั้นสุดท้ายของคนนี้ → ล้างหน้า กลับไปรอสแกนคนต่อไป
+      feedback('ok');
+      toast('ok', 'T-shirt ' + (r.member.shirt || '') + ' given to ' + r.member.name + ' — ready for the next person');
+      clearResult();
     }, function (e) { b.disabled = false; toast('bad', errText(e)); });
   }
 
