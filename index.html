@@ -274,7 +274,7 @@
 
   // ---------- สถานะ (ทุก 20 วิ)
   function refreshStats() {
-    call('ciStatus').then(function (s) {
+    call('ciStatus', DEVICE).then(function (s) {
       // ตัวหาร = ชำระแล้ว/ยกเว้น (เช็คอินได้) · registered = ทุกแถวในชีต รวมคนที่ยังไม่ชำระ
       var st = document.getElementById('stats');
       st.textContent = 'Checked in ' + s.checked_in + '/' + s.eligible + ' paid' + (s.registered ? ' · ' + s.registered + ' registered' : '');
@@ -282,7 +282,10 @@
       var a = document.getElementById('agent'); a.textContent = '';
       a.className = 'pill ' + (s.agent_ok ? 'pill-light' : 'pill-bad');
       a.appendChild(icon('bi-printer'));
-      a.appendChild(document.createTextNode(s.agent_ok ? ' Printer ready' + (s.queue_pending ? ' · queue ' + s.queue_pending : '') : ' Print station offline'));
+      // เครื่องพิมพ์ที่จับคู่กับเครื่องสแกนนี้เท่านั้น (ไม่ย้ายไปเครื่องอื่นเอง — 14 พ.ย.)
+      a.appendChild(document.createTextNode(s.agent_ok ? ' Printer ready' + (s.queue_pending ? ' · queue ' + s.queue_pending : '')
+        : s.print_reason === 'paused' ? ' Printer paused' : ' Print station offline'));
+      a.title = s.print_station ? 'Badges from this scanner print at ' + s.print_station : '';
     }).catch(function () {});
   }
 
@@ -423,7 +426,9 @@
   function printToast(r) {
     if (!r.ok) { toast('warn', r.reason === 'queued' ? 'Badge is already in the print queue' : 'Badge was printed before — press Print badge to print again'); return; }
     logLocal({ action: 'print', id: current && current.id });
-    toast(r.agent_ok ? 'ok' : 'warn', r.agent_ok ? 'Sent to print — the badge will come out in a few seconds' : 'Queued, but the print station is offline — tell the Mac operator');
+    toast(r.agent_ok ? 'ok' : 'warn', r.agent_ok ? 'Sent to print — the badge will come out in a few seconds'
+      : r.print_reason === 'paused' ? 'Queued, but this desk\'s printer is paused (paper or ink?) — tell the print operator. The badge waits until it is fixed.'
+      : 'Queued, but print station ' + (r.print_station || '') + ' is offline — tell the print operator. The badge waits until it is back.');
     if (current) current.open_job = true;
   }
   function giveShirt(b, confirmed) {
