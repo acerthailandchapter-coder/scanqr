@@ -76,6 +76,20 @@
   .reading { font-size: 1.25rem; }
   .act .btn.sending { opacity: 1; background: var(--shallows); border-color: var(--sea); color: var(--ink); }
   .act .btn.sent { opacity: 1; background: var(--palm); border-color: var(--palm); color: #fff; }
+  /* เครื่องพิมพ์ของโต๊ะนี้มีปัญหา (15 พ.ย.): แถบแดงกะพริบใต้หัว + กรอบแดงกะพริบรอบจอ จนกว่าจะแก้ — ไม่บังการกด */
+  .printer-alarm { background: var(--temple); color: #fff; font-family: var(--display); padding: .8rem 1rem; display: flex; gap: .85rem; align-items: center;
+                   animation: alarm-bg 1s steps(1, end) infinite; }
+  .printer-alarm.offline { background: #8A5300; animation-name: alarm-bg-off; }
+  .printer-alarm i.big { font-size: 2.2rem; line-height: 1; }
+  .printer-alarm .head { font-size: 1.35rem; font-weight: 700; line-height: 1.2; }
+  .printer-alarm .sub { font-family: var(--bs-body-font-family); font-size: 1rem; opacity: .95; }
+  .printer-alarm .btn { white-space: nowrap; }
+  .alarm-frame { position: fixed; inset: 0; z-index: 1990; pointer-events: none; border: 10px solid var(--temple); animation: alarm-frame 1s steps(1, end) infinite; }
+  .alarm-frame.offline { border-color: #C77700; }
+  @keyframes alarm-bg { 0% { background: #D52B32; } 50% { background: #7E1218; } }
+  @keyframes alarm-bg-off { 0% { background: #C77700; } 50% { background: #6E4100; } }
+  @keyframes alarm-frame { 0% { opacity: 1; } 50% { opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) { .printer-alarm, .alarm-frame { animation: none; } }
   @media (prefers-reduced-motion: reduce) { .scan-flash { transition: none; } }
   @media (max-width: 575.98px) {
     .m-reg { font-size: 1.05rem; } .badge-slot { padding: .8rem .9rem; }
@@ -92,6 +106,15 @@
   <span class="pill pill-light" id="scannerMode" role="button" title="Switch scanner / camera mode"></span>
   <span class="pill pill-light" id="deviceName" role="button" title="Change device name"></span>
 </header>
+<div class="printer-alarm d-none" id="printerAlarm" role="alert" aria-live="assertive">
+  <i class="bi bi-exclamation-octagon-fill big"></i>
+  <div class="me-auto">
+    <div class="head" id="paHead">Printer problem</div>
+    <div class="sub" id="paSub"></div>
+  </div>
+  <button type="button" class="btn btn-light btn-sm" id="paMute"><i class="bi bi-volume-mute"></i> Mute 5 min</button>
+</div>
+<div class="alarm-frame d-none" id="alarmFrame"></div>
 
 <main class="container-fluid p-3">
   <div class="row g-3">
@@ -282,14 +305,61 @@
       var st = document.getElementById('stats');
       st.textContent = 'Checked in ' + s.checked_in + '/' + s.eligible + ' paid' + (s.registered ? ' · ' + s.registered + ' registered' : '');
       st.title = s.eligible + ' paid or exempt (can check in) out of ' + s.registered + ' registered';
-      var a = document.getElementById('agent'); a.textContent = '';
-      a.className = 'pill ' + (s.agent_ok ? 'pill-light' : 'pill-bad');
-      a.appendChild(icon('bi-printer'));
-      // เครื่องพิมพ์ที่จับคู่กับเครื่องสแกนนี้เท่านั้น (ไม่ย้ายไปเครื่องอื่นเอง — 14 พ.ย.)
-      a.appendChild(document.createTextNode(s.agent_ok ? ' Printer ready' + (s.queue_pending ? ' · queue ' + s.queue_pending : '')
-        : s.print_reason === 'paused' ? ' Printer paused' : ' Print station offline'));
-      a.title = s.print_station ? 'Badges from this scanner print at ' + s.print_station : '';
+      queuePending = s.queue_pending || 0;
+      applyPrinter({ ok: s.agent_ok, reason: s.print_reason, problem: s.print_problem, station: s.print_station });
     }).catch(function () {});
+  }
+
+  // ---------- เครื่องพิมพ์ของโต๊ะนี้ (ทุก 8 วิ — อ่าน cache ของ Google อย่างเดียว เร็ว) · มีปัญหา = แถบแดงกะพริบ + เสียง (15 พ.ย.)
+  // เครื่องพิมพ์ที่จับคู่กับเครื่องสแกนนี้เท่านั้น (ไม่ย้ายไปเครื่องอื่นเอง — 14 พ.ย.)
+  var queuePending = 0, printerBad = false, muteUntil = 0, lastBeep = 0, audioCtx = null;
+  function unlockAudio() {
+    try {
+      if (!audioCtx) { var A = window.AudioContext || window.webkitAudioContext; if (A) audioCtx = new A(); }
+      if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+    } catch (e) {}
+  }
+  document.addEventListener('pointerdown', unlockAudio, true);
+  document.addEventListener('keydown', unlockAudio, true);
+  function alarmBeep() {
+    if (!audioCtx || audioCtx.state !== 'running' || Date.now() < muteUntil) return;
+    [0, 0.3, 0.6].forEach(function (t) {
+      var o = audioCtx.createOscillator(), g = audioCtx.createGain();
+      o.type = 'square'; o.frequency.value = 880; g.gain.value = 0.25;
+      o.connect(g); g.connect(audioCtx.destination);
+      o.start(audioCtx.currentTime + t); o.stop(audioCtx.currentTime + t + 0.2);
+    });
+  }
+  function applyPrinter(p) {
+    if (!p) return;
+    var a = document.getElementById('agent'); a.textContent = '';
+    a.className = 'pill ' + (p.ok ? 'pill-light' : 'pill-bad');
+    a.appendChild(icon('bi-printer'));
+    var paused = p.reason === 'paused';
+    a.appendChild(document.createTextNode(p.ok ? ' Printer ready' + (queuePending ? ' · queue ' + queuePending : '')
+      : paused ? ' Printer paused' : ' Print station offline'));
+    a.title = p.station ? 'Badges from this scanner print at ' + p.station : '';
+    var bar = document.getElementById('printerAlarm'), frame = document.getElementById('alarmFrame');
+    var bad = !p.ok;
+    bar.classList.toggle('d-none', !bad); frame.classList.toggle('d-none', !bad);
+    bar.classList.toggle('offline', bad && !paused); frame.classList.toggle('offline', bad && !paused);
+    if (bad) {
+      document.getElementById('paHead').textContent = paused
+        ? 'Printer problem' + (p.problem ? ': ' + p.problem : '')
+        : 'Print station offline' + (p.station ? ' (' + p.station + ')' : '');
+      document.getElementById('paSub').textContent = paused
+        ? 'Badges from this desk are waiting. Fix the printer (paper / toner / jam) or tell the print operator — waiting badges print by themselves once it is fixed.'
+        : 'The print computer is not answering. Tell the print operator — badges wait and print once it is back. Check-in still works.';
+      if (!printerBad || Date.now() - lastBeep > 20000) { alarmBeep(); lastBeep = Date.now(); }
+    }
+    printerBad = bad;
+  }
+  document.getElementById('paMute').onclick = function () {
+    muteUntil = Date.now() + 5 * 60000; toast('info', 'Alarm sound muted for 5 minutes');
+  };
+  function refreshPrinter() {
+    if (!DEVICE) return;
+    call('ciPrinter', DEVICE).then(applyPrinter).catch(function () {});
   }
 
   // ---------- ยืนยัน
@@ -460,6 +530,7 @@
   function printToast(r) {
     if (!r.ok) { toast('warn', r.reason === 'queued' ? 'Badge is already in the print queue' : 'Badge was printed before — press Print badge to print again'); return; }
     logLocal({ action: 'print', id: current && current.id });
+    if ('agent_ok' in r) applyPrinter({ ok: r.agent_ok, reason: r.print_reason, problem: r.print_problem, station: r.print_station });
     toast(r.agent_ok ? 'ok' : 'warn', r.agent_ok ? 'Sent to print — the badge will come out in a few seconds'
       : r.print_reason === 'paused' ? 'Queued, but this desk\'s printer is paused (paper or ink?) — tell the print operator. The badge waits until it is fixed.'
       : 'Queued, but print station ' + (r.print_station || '') + ' is offline — tell the print operator. The badge waits until it is back.');
@@ -622,6 +693,7 @@
   var saved = store('icapma_ci_device');
   if (saved && DEVICES.indexOf(saved) >= 0) setDevice(saved); else deviceModal.show();
   refreshStats(); setInterval(refreshStats, 20000);
+  setInterval(refreshPrinter, 8000);
 })();
 </script>
 </body>
