@@ -848,9 +848,13 @@ function applyPaper() {
   var q = wide ? h - 2 * pad : Math.min(w - 2 * pad, h - 2 * pad - (tall ? 12 : 6));
   var narrow = wide && w - q - 2 * pad < 16;   // ข้าง QR แคบ (เช่น 40×30): เหลือแค่ Member Code แนวตั้ง
   slip.className = 'label ' + (wide ? 'wide' + (narrow ? ' narrow' : '') : 'tall' + (tall ? '' : ' sq'));
+  // ขนาดเป็น vw/vh ของพื้นที่พิมพ์จริง ไม่ใช่ มม. ตายตัว: ถ้าไดรเวอร์/Chrome เว้นขอบ (Margins: Minimum บน Windows)
+  // ทุกอย่างย่อตามลงในสติกเกอร์แผ่นเดียว ไม่ล้นไปแผ่นที่ 2
+  var qs = 'min(' + (q / w * 100).toFixed(2) + 'vw,' + (q / h * 100).toFixed(2) + 'vh)';
   st.textContent = '@media print{@page{size:' + w + 'mm ' + h + 'mm;margin:0}'
-    + '#printSlip.label{width:' + w + 'mm;height:' + (h - 0.5) + 'mm;padding:' + pad + 'mm}'
-    + '#printSlip.label img{width:' + q + 'mm;height:' + q + 'mm;flex:none}}';
+    + 'html,body{margin:0!important;padding:0!important;height:auto!important;min-height:0!important}'
+    + '#printSlip.label{width:100vw;height:98vh;padding:0;break-inside:avoid;page-break-inside:avoid}'
+    + '#printSlip.label img{width:' + qs + ';height:' + qs + ';flex:none}}';
 }
 applyPaper();
 window.addEventListener('beforeprint', applyPaper);
