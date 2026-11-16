@@ -108,8 +108,18 @@
     #printSlip .cd { font-size: 28pt; font-weight: 700; letter-spacing: .05em; margin: 0 0 6mm; }
     #printSlip .hint { font-size: 12pt; margin: 2mm 0; }
     #printSlip .cut { border-top: 1px dashed #999; margin-top: 10mm; padding-top: 2mm; font-size: 9pt; color: #777; }
+    /* สติกเกอร์ (เช่น Phomemo M110) — ขนาด @page และขนาด QR ตั้งจาก JS ตามที่เลือกใน #qrPaper */
+    #printSlip.label { box-sizing: border-box; overflow: hidden; display: flex !important; align-items: center; justify-content: center; gap: 1.5mm; }
+    #printSlip.label.tall { flex-direction: column; gap: .8mm; }
+    #printSlip.label > .ev, #printSlip.label > h2, #printSlip.label > .hint, #printSlip.label > .cut { display: none !important; }
+    #printSlip.label .cd { font-size: 10pt; margin: 0; letter-spacing: .02em; line-height: 1.1; }
+    #printSlip.label .nm { font-size: 7pt; margin: 0; line-height: 1.15; max-height: 2.3em; overflow: hidden; }
+    #printSlip.label.wide .tx { text-align: left; min-width: 0; }
+    #printSlip.label.wide .cd { margin-bottom: 1mm; }
+    #printSlip.label.sq .nm { display: none; }
   }
 </style>
+<style id="pageStyle"></style>
 </head>
 <body>
 
@@ -257,6 +267,14 @@
         <div class="small text-secondary mt-2">ให้ผู้ลงทะเบียนถ่ายรูป QR นี้เก็บไว้ หรือกดพิมพ์</div>
       </div>
       <div class="modal-footer border-0 pt-0">
+        <select class="form-select form-select-sm w-auto me-auto" id="qrPaper" aria-label="ขนาดกระดาษที่พิมพ์">
+          <option value="a4">กระดาษ A4</option>
+          <option value="50x30">สติกเกอร์ 50×30 มม.</option>
+          <option value="40x40">สติกเกอร์ 40×40 มม.</option>
+          <option value="50x50">สติกเกอร์ 50×50 มม.</option>
+          <option value="40x60">สติกเกอร์ 40×60 มม.</option>
+          <option value="50x80">สติกเกอร์ 50×80 มม.</option>
+        </select>
         <button type="button" class="btn btn-light" data-bs-dismiss="modal">ปิด</button>
         <button type="button" class="btn btn-primary" id="qrPrint"><i class="bi bi-printer me-1"></i>พิมพ์</button>
       </div>
@@ -270,8 +288,10 @@
   <p class="ev" id="psEvent"></p>
   <h2>Check-in QR · QR สำหรับเช็คอิน</h2>
   <img id="psImg" alt="">
-  <div class="nm" id="psName"></div>
-  <div class="cd" id="psCode"></div>
+  <div class="tx">
+    <div class="nm" id="psName"></div>
+    <div class="cd" id="psCode"></div>
+  </div>
   <p class="hint">Please show this QR code at the registration desk.</p>
   <p class="hint">กรุณาแสดง QR นี้ที่จุดลงทะเบียน</p>
   <div class="cut">ICAPMA 2026 Registration</div>
@@ -774,6 +794,25 @@ function showQr(m, btn, autoPrint) {
   });
 }
 document.getElementById('qrPrint').addEventListener('click', function () { window.print(); });
+
+// ขนาดกระดาษ: A4 หรือสติกเกอร์ (เครื่องพิมพ์ฉลาก เช่น Phomemo M110) — จำค่าไว้ในเครื่องนี้
+var paperSel = document.getElementById('qrPaper');
+try { var savedPaper = localStorage.getItem('icapma_qr_paper'); if (savedPaper && paperSel.querySelector('option[value="' + savedPaper + '"]')) paperSel.value = savedPaper; } catch (e) {}
+paperSel.addEventListener('change', function () { try { localStorage.setItem('icapma_qr_paper', paperSel.value); } catch (e) {} applyPaper(); });
+function applyPaper() {
+  var v = paperSel.value, slip = document.getElementById('printSlip'), st = document.getElementById('pageStyle');
+  if (v === 'a4') { slip.className = ''; st.textContent = ''; return; }
+  var wh = v.split('x'), w = +wh[0], h = +wh[1], pad = 2;
+  var wide = w > h + 5;                 // แนวนอน: QR ซ้าย ข้อความขวา
+  var tall = !wide && h - w >= 12;      // แนวตั้ง: QR บน ชื่อ + รหัสล่าง
+  var q = wide ? h - 2 * pad : Math.min(w - 2 * pad, h - 2 * pad - (tall ? 12 : 6));
+  slip.className = 'label ' + (wide ? 'wide' : 'tall' + (tall ? '' : ' sq'));
+  st.textContent = '@media print{@page{size:' + w + 'mm ' + h + 'mm;margin:0}'
+    + '#printSlip.label{width:' + w + 'mm;height:' + (h - 0.5) + 'mm;padding:' + pad + 'mm}'
+    + '#printSlip.label img{width:' + q + 'mm;height:' + q + 'mm;flex:none}}';
+}
+applyPaper();
+window.addEventListener('beforeprint', applyPaper);
 
 // ---------- เพิ่มคน walk-in (สมัครหน้างาน) — ไม่คำนวณค่าลงทะเบียน (งานฝ่ายการเงิน)
 var walkinModal = new bootstrap.Modal(document.getElementById('walkinModal'));
