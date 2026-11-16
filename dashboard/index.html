@@ -118,7 +118,10 @@
     #printSlip.label.wide .cd { margin-bottom: 1mm; }
     #printSlip.label.sq .nm { display: none; }
     #printSlip.label.narrow .nm { display: none; }
-    #printSlip.label.narrow .cd { writing-mode: vertical-rl; font-size: 9pt; margin: 0; }
+    /* 40×30: QR อยู่กึ่งกลางสติกเกอร์พอดี · Member Code แนวตั้งชิดขอบขวา (ไม่ดัน QR) */
+    #printSlip.label.narrow { position: relative; }
+    #printSlip.label.narrow .tx { position: absolute; top: 0; bottom: 0; right: 1mm; display: flex; align-items: center; }
+    #printSlip.label.narrow .cd { writing-mode: vertical-rl; font-size: 8pt; margin: 0; }
   }
 </style>
 <style id="pageStyle"></style>
