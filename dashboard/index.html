@@ -117,6 +117,8 @@
     #printSlip.label.wide .tx { text-align: left; min-width: 0; }
     #printSlip.label.wide .cd { margin-bottom: 1mm; }
     #printSlip.label.sq .nm { display: none; }
+    #printSlip.label.narrow .nm { display: none; }
+    #printSlip.label.narrow .cd { writing-mode: vertical-rl; font-size: 9pt; margin: 0; }
   }
 </style>
 <style id="pageStyle"></style>
@@ -269,6 +271,7 @@
       <div class="modal-footer border-0 pt-0">
         <select class="form-select form-select-sm w-auto me-auto" id="qrPaper" aria-label="ขนาดกระดาษที่พิมพ์">
           <option value="a4">กระดาษ A4</option>
+          <option value="40x30">สติกเกอร์ 40×30 มม.</option>
           <option value="50x30">สติกเกอร์ 50×30 มม.</option>
           <option value="40x40">สติกเกอร์ 40×40 มม.</option>
           <option value="50x50">สติกเกอร์ 50×50 มม.</option>
@@ -806,7 +809,8 @@ function applyPaper() {
   var wide = w > h + 5;                 // แนวนอน: QR ซ้าย ข้อความขวา
   var tall = !wide && h - w >= 12;      // แนวตั้ง: QR บน ชื่อ + รหัสล่าง
   var q = wide ? h - 2 * pad : Math.min(w - 2 * pad, h - 2 * pad - (tall ? 12 : 6));
-  slip.className = 'label ' + (wide ? 'wide' : 'tall' + (tall ? '' : ' sq'));
+  var narrow = wide && w - q - 2 * pad < 16;   // ข้าง QR แคบ (เช่น 40×30): เหลือแค่ Member Code แนวตั้ง
+  slip.className = 'label ' + (wide ? 'wide' + (narrow ? ' narrow' : '') : 'tall' + (tall ? '' : ' sq'));
   st.textContent = '@media print{@page{size:' + w + 'mm ' + h + 'mm;margin:0}'
     + '#printSlip.label{width:' + w + 'mm;height:' + (h - 0.5) + 'mm;padding:' + pad + 'mm}'
     + '#printSlip.label img{width:' + q + 'mm;height:' + q + 'mm;flex:none}}';
