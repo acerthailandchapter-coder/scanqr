@@ -151,6 +151,11 @@
   </div>
 
   <div id="modeAlert" class="alert d-none d-flex align-items-start gap-2" role="alert"></div>
+  <div id="capAlert" class="alert alert-warning d-none align-items-start gap-2" role="status">
+    <i class="bi bi-envelope-x"></i>
+    <div><strong>อีเมลวันนี้ครบเพดานแล้ว</strong> — ตอนนี้กดได้แค่ "พิมพ์ QR" ให้ผู้ลงทะเบียนถือไปเช็คอิน
+      · อีเมล QR ของคนที่ยังไม่ได้จะส่งให้อัตโนมัติวันถัดไป</div>
+  </div>
   <div id="problems" class="alert alert-warning d-none problems" role="alert"></div>
 
   <div class="card panel mb-3">
@@ -441,8 +446,19 @@ function kpi(iconName, cls, value, label) {
   return col;
 }
 
+// อีเมลวันนี้เต็มเพดาน → การ์ดเหลือแค่ปุ่มพิมพ์ QR (ไม่มีปุ่มส่ง/ส่งซ้ำ/แก้อีเมล) จะได้ไม่มีใครเจอ "ยังไม่ส่ง" กลางงาน
+var emailFull = false;
+function setEmailFull(full) {
+  var cap = document.getElementById('capAlert');
+  cap.classList.toggle('d-none', !full);
+  cap.classList.toggle('d-flex', full);
+  if (full === emailFull) return;
+  emailFull = full;
+  loadList(false, true); // วาดปุ่มบนการ์ดใหม่
+}
 function loadOverview(silent) {
   return call('dashOverview').then(function (o) {
+    setEmailFull(!!o.emailFull);
     var mode = document.getElementById('mode');
     var alertBox = document.getElementById('modeAlert');
     alertBox.textContent = '';
@@ -657,6 +673,16 @@ function renderMember(m) {
     var n = el('span', 'small text-danger d-flex align-items-center gap-1');
     n.appendChild(icon('bi-x-octagon')); n.appendChild(document.createTextNode('สถานะคืนเงิน — ส่ง QR ไม่ได้'));
     actions.appendChild(n);
+  } else if (emailFull) {
+    var pBtn = el('button', paidOrExempt ? 'btn btn-primary' : 'btn btn-success');
+    pBtn.type = 'button';
+    pBtn.appendChild(icon((paidOrExempt ? 'bi-printer' : 'bi-cash-coin') + ' me-1'));
+    pBtn.appendChild(document.createTextNode(paidOrExempt ? 'พิมพ์ QR' : 'ยืนยันชำระแล้ว + พิมพ์ QR'));
+    pBtn.addEventListener('click', function () {
+      if (paidOrExempt) showQr(m, pBtn);
+      else doSend(m, pBtn, null, false, true, false, card, sentLine, true);
+    });
+    actions.appendChild(pBtn);
   } else {
     var label, cls, ic;
     if (!paidOrExempt) { label = 'ยืนยันชำระแล้ว + ส่ง QR + พิมพ์ QR'; cls = 'btn btn-success'; ic = 'bi-cash-coin'; }
@@ -702,7 +728,7 @@ function setBusy(btn, busy) {
   }
 }
 
-function doSend(m, btn, emailInput, editing, markPaid, confirmResend, card, sentLine) {
+function doSend(m, btn, emailInput, editing, markPaid, confirmResend, card, sentLine, printOnly) {
   var staff = staffInput.value.trim();
   if (!staff) {
     staffInput.classList.add('is-invalid');
@@ -714,7 +740,7 @@ function doSend(m, btn, emailInput, editing, markPaid, confirmResend, card, sent
   var to = newEmail || m.email || '(ไม่มีอีเมล)';
 
   // เคยส่งแล้ว (รวมส่งเข้า TEST_EMAIL): ถามยืนยันส่งซ้ำครั้งเดียวตรงนี้
-  if (sentLine && !markPaid && !confirmResend) {
+  if (sentLine && !markPaid && !confirmResend && !printOnly) {
     ask('ส่ง QR ซ้ำ?', 'bi-arrow-repeat text-warning',
       [el('p', 'mb-3', m.name + ' ได้ QR ไปแล้ว ต้องการส่งอีกครั้งไหม?'), detailList([['ส่งครั้งก่อน', sentLine.at], ['ส่งไปที่', to], ['ผู้กด', staff]])],
       'ส่งซ้ำ', 'btn-warning'
@@ -724,7 +750,13 @@ function doSend(m, btn, emailInput, editing, markPaid, confirmResend, card, sent
     return;
   }
 
-  var first = confirmResend ? Promise.resolve(true) : ask(
+  var first = confirmResend ? Promise.resolve(true) : printOnly ? ask('ยืนยันการชำระเงิน', 'bi-cash-coin text-success',
+    [
+      el('p', 'mb-3', 'ตั้งสถานะเป็น Success แล้วเปิดหน้าพิมพ์ QR ให้ทันที (อีเมลวันนี้ครบเพดาน — ระบบส่งอีเมล QR ให้เองวันถัดไป)'),
+      detailList([['ชื่อ', m.name], ['Member Code', m.code], ['ผู้กด', staff]])
+    ],
+    'ยืนยัน + พิมพ์', 'btn-success'
+  ) : ask(
     markPaid ? 'ยืนยันการชำระเงิน' : 'ส่ง QR',
     markPaid ? 'bi-cash-coin text-success' : 'bi-send text-primary',
     [
@@ -739,7 +771,7 @@ function doSend(m, btn, emailInput, editing, markPaid, confirmResend, card, sent
     if (!yes) return;
     try { localStorage.setItem('icapma_staff', staff); } catch (e) {}
     setBusy(btn, true);
-    return call('dashSend', m.id, { staff: staff, markPaid: markPaid, newEmail: newEmail, confirmResend: confirmResend }).then(function (r) {
+    return call('dashSend', m.id, { staff: staff, markPaid: markPaid, newEmail: newEmail, confirmResend: confirmResend, printOnly: !!printOnly }).then(function (r) {
       setBusy(btn, false);
       if (r.needConfirm) {
         return ask('ส่ง QR ซ้ำ?', 'bi-arrow-repeat text-warning',
@@ -750,7 +782,9 @@ function doSend(m, btn, emailInput, editing, markPaid, confirmResend, card, sent
           else toast('info', 'ยกเลิก — ไม่ได้ส่งซ้ำ');
         });
       }
-      var kinds = { sent: 'ok', test_sent: 'ok', dry_run: 'info', blocked: 'bad', skipped: 'warn', error: 'bad', cap: 'warn', quota: 'warn' };
+      if (r.outcome === 'cap' || r.outcome === 'quota') setEmailFull(true);
+      var kinds = { print_only: 'ok', sent: 'ok', test_sent: 'ok', dry_run: 'info', blocked: 'bad', skipped: 'warn', error: 'bad', cap: 'warn', quota: 'warn' };
+      if (r.outcome === 'print_only') r.message = 'ยืนยันชำระแล้ว — เปิดหน้าพิมพ์ QR';
       var prefix = { sent: 'ส่งแล้ว — ', test_sent: 'ส่งเข้า TEST_EMAIL — ', dry_run: 'โหมดทดสอบ — ', blocked: 'ไม่ส่ง: ', skipped: 'ข้าม: ', error: 'ส่งไม่สำเร็จ ระบบจะลองใหม่รอบถัดไป: ', cap: 'ยังไม่ส่ง: ', quota: 'ยังไม่ส่ง: ' };
       toast(kinds[r.outcome] || 'info', (prefix[r.outcome] || '') + r.message);
       loadOverview();
